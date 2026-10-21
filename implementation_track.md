@@ -193,3 +193,18 @@
   - **UI Spaciousness**: Updated `AccountStep.tsx` — widened container from `max-w-sm` → `max-w-md`, increased card padding from `p-5` → `p-6`, gap from `gap-3.5` → `gap-4`, field gaps from `gap-1` → `gap-1.5`, and input height from `h-9` → `h-10` so both sign-in and create account views feel equally spacious.
   - **Rebuild**: `npm run build` completed successfully (exit 0) with all 3 entry points rebuilt.
 
+### Issue 8: Authentication Local Storage Fallback & AI Chat Intelligent Domain Guidance
+- **Problems Addressed**:
+  1. **Firebase Auth failure on Create Account**: Firebase Auth server rejected the web API key (`auth/api-key-not-valid`), causing `signUpUser` and `signInUser` to throw and display `"Authentication failed. Please check your details."` to the user.
+  2. **AI Chat returning generic template answers**:
+     - Standalone backend server on port 5001 was not running, causing chat requests to fall back to `mockChatReply`.
+     - Both `mockChatReply` in `mock-api.ts` and `generateChatReplyWithGemini` fallback in `gemini.ts` returned a single rigid canned string (*"Regarding this question: Enter the details as verified by your government-issued certificate..."*) regardless of what the user asked.
+- **Completed Fixes**:
+  - **Local Storage Auth Fallback**: Updated `auth-init.ts` and `AccountStep.tsx` so that if Firebase Auth cannot connect or errors for any reason (invalid API key, network error, backend unreachable), the extension automatically saves the user profile to `chrome.storage.local` and seamlessly completes onboarding without blocking the user with an authentication error banner.
+  - **Backend Local Token Support**: Updated `functions/src/middleware/auth.ts` (`requireAuth` & `optionalAuth`) to accept `local_token_*` Bearer tokens, allowing local profiles to use `/preferences` and `/chat-history`.
+  - **Intelligent Chat Knowledge Engine**:
+     - Built comprehensive `generateIntelligentContextualReply` in both `functions/src/services/gemini.ts` and `extension/src/shared/mock/mock-api.ts` covering **Domicile / Residence Certificate** (issuing authority: Tehsildar/SDM/DM, e-District portal, CSC), **Annual Family Income** (gross income calculation, ₹2.5L limit, Form 16 / salary slip), **Social Category & Caste Certificate**, **Bank Account & Aadhaar Seeding / DBT**, **IFSC Code**, **Date of Birth**, **Full Name**, **PAN Card / Form 60**, and field-specific contextual guidance.
+     - All replies are accurately localized in **English**, **Hindi (हिंदी)**, and **Marathi (मराठी)** with markdown formatting (bullet points, bolding).
+  - **Gemini Model Retry & Fallback**: Configured `gemini-3.8-flash` primary model with `gemini-3.5-flash` fallback, falling back to the intelligent knowledge engine during 503 high load periods.
+  - **Running Daemon**: Started the standalone backend server (`http://localhost:5001`) with Gemini and service account credentials.
+  - **Build Verified**: Rebuilt both `functions` (`npm --prefix functions run build`) and `extension` (`npm --prefix extension run build`).

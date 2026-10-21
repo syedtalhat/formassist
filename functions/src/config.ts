@@ -75,6 +75,7 @@ export const config = {
   region: 'asia-south1',
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   geminiModel: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+  geminiFallbackModel: process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash',
   geminiEmbeddingModel: process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001',
   embeddingDimension: 768,
   similarityThreshold: Number(process.env.SIMILARITY_THRESHOLD || 0.65),

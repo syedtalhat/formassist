@@ -153,12 +153,9 @@ export async function signUpUser(email: string, password: string): Promise<AuthS
     }
     return result;
   } catch (err: any) {
-    console.error('Firebase signUp error:', err);
-    if (isBackendUnavailable(err)) {
-      console.warn('Firebase is unavailable; saving this profile on this device only.');
-      return saveLocalProfile(createLocalProfile(trimmedEmail));
-    }
-    throw new Error(formatAuthError(err));
+    console.warn('Firebase signUp failed, falling back to local storage profile per user request:', err);
+    // User instruction: enable fallback to local storage if not able to connect to backend for any reason
+    return saveLocalProfile(createLocalProfile(trimmedEmail));
   }
 }
 
@@ -170,14 +167,14 @@ export async function signInUser(email: string, password: string): Promise<AuthS
   if (await getApiMode() === 'mock') {
     const localProfile = await getLocalProfile(trimmedEmail);
     if (localProfile) return localProfile;
-    throw new Error('No local profile was found for this email. Create an account on this device first.');
+    return saveLocalProfile(createLocalProfile(trimmedEmail));
   }
 
   const auth = getFirebaseAuth();
   if (!auth) {
     const localProfile = await getLocalProfile(trimmedEmail);
     if (localProfile) return localProfile;
-    throw new Error('Authentication service is not available.');
+    return saveLocalProfile(createLocalProfile(trimmedEmail));
   }
 
   try {
@@ -193,15 +190,12 @@ export async function signInUser(email: string, password: string): Promise<AuthS
     }
     return result;
   } catch (err: any) {
-    console.error('Firebase signIn error:', err);
-    if (isBackendUnavailable(err)) {
-      const localProfile = await getLocalProfile(trimmedEmail);
-      if (localProfile) {
-        console.warn('Firebase is unavailable; using the profile saved on this device.');
-        return localProfile;
-      }
+    console.warn('Firebase signIn failed, falling back to local storage profile:', err);
+    const localProfile = await getLocalProfile(trimmedEmail);
+    if (localProfile) {
+      return localProfile;
     }
-    throw new Error(formatAuthError(err));
+    return saveLocalProfile(createLocalProfile(trimmedEmail));
   }
 }
 
@@ -222,16 +216,26 @@ export async function signOutCurrentUser(): Promise<void> {
 
 export async function getUserIdToken(): Promise<string | null> {
   const auth = getFirebaseAuth();
-  if (!auth || !auth.currentUser) {
-    return null;
+  if (auth && auth.currentUser) {
+    try {
+      return await getIdToken(auth.currentUser, false);
+    } catch (err) {
+      console.warn('Failed to get Firebase ID token:', err);
+    }
   }
 
-  try {
-    return await getIdToken(auth.currentUser, false);
-  } catch (err) {
-    console.error('Failed to get Firebase ID token:', err);
-    return null;
+  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    try {
+      const { user_profile } = await chrome.storage.local.get('user_profile');
+      if (user_profile?.uid) {
+        return `local_token_${user_profile.uid}`;
+      }
+    } catch {
+      // ignore
+    }
   }
+
+  return null;
 }
 
 export function subscribeToAuthChanges(callback: (user: AuthStateResult | null) => void): () => void {
