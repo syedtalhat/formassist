@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex Bank - Customer Re-KYC Verification Portal</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #F7FAFC;
+      color: #2D3748;
+      margin: 0;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 620px;
+      margin: 0 auto;
+      background: #FFFFFF;
+      padding: 32px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      border: 1px solid #E2E8F0;
+    }
+    .header {
+      border-bottom: 2px solid #2B6CB0;
+      padding-bottom: 12px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      font-size: 20px;
+      color: #2B6CB0;
+      margin: 0;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    input, select {
+      width: 100%;
+      height: 44px;
+      padding: 8px 12px;
+      font-size: 15px;
+      border: 1.5px solid #CBD5E0;
+      border-radius: 6px;
+    }
+    .btn-submit {
+      background: #2B6CB0;
+      color: white;
+      font-size: 16px;
+      font-weight: 600;
+      padding: 12px;
+      border: none;
+      border-radius: 6px;
+      width: 100%;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Apex Commercial Bank</h1>
+      <p style="font-size: 13px; color: #718096; margin: 4px 0 0 0;">Periodic Know-Your-Customer (KYC) Update</p>
+    </div>
+
+    <form id="bankKycForm" action="/kyc/verify" method="POST">
+      <div class="form-group">
+        <label for="panNumber">Permanent Account Number (PAN)</label>
+        <input type="text" id="panNumber" name="panNumber" placeholder="ABCDE1234F" maxlength="10" required />
+      </div>
+
+      <div class="form-group">
+        <label for="aadhaarNumber">Aadhaar Number (12 digits)</label>
+        <input type="text" id="aadhaarNumber" name="aadhaarNumber" placeholder="1234 5678 9012" maxlength="14" required />
+      </div>
+
+      <div class="form-group">
+        <label for="annualIncomeBracket">Annual Income Bracket</label>
+        <select id="annualIncomeBracket" name="annualIncomeBracket" required>
+          <option value="">-- Select Annual Bracket --</option>
+          <option value="UP_TO_1L">Up to ₹1,00,000</option>
+          <option value="1L_TO_5L">₹1,00,000 - ₹5,00,000</option>
+          <option value="5L_TO_10L">₹5,00,000 - ₹10,00,000</option>
+          <option value="ABOVE_10L">Above ₹10,00,000</option>
+        </select>
+      </div>
+
+      <button type="submit" class="btn-submit">Submit KYC Verification</button>
+    </form>
+  </div>
+</body>
+</html>

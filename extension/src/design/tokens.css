@@ -1,0 +1,70 @@
+:root {
+  /* Surfaces & Ink */
+  --surface-page: #F3F6F7;
+  --surface-card: #FFFFFF;
+  --surface-muted: #ECEFF1;
+  --surface-dim: #D7DADB;
+  --surface-container: #EBEEEF;
+  --surface-container-high: #E5E9EA;
+  
+  --text-primary: #1F2D36;
+  --text-secondary: #4A5B66;
+  --text-disabled: #8A98A1;
+  --text-on-primary: #FFFFFF;
+
+  /* Primary Lagoon */
+  --primary: #004149;
+  --primary-container: #0E5A64;
+  --primary-pressed: #0A4249;
+  --primary-tint: #E3F0F1;
+  --on-primary: #FFFFFF;
+  --on-primary-container: #8FCFDB;
+
+  /* Secondary */
+  --secondary: #52606A;
+  --secondary-container: #D5E5F1;
+  --on-secondary-container: #586671;
+
+  /* Accent Marigold */
+  --accent-wash: rgba(242, 169, 59, 0.30);
+  --accent-marigold: #F2A93B;
+
+  /* Borders */
+  --border-strong: #6B7B85;
+  --border-subtle: #DDE4E8;
+
+  /* Provenance Triplet */
+  --source-official: #17724A;
+  --source-official-bg: #E4F4EC;
+  --source-page: #2A5DA8;
+  --source-page-bg: #E6EEFA;
+  --source-ai: #5E479B;
+  --source-ai-bg: #EFEBFA;
+
+  /* Tag Triplet */
+  --tag-required: #0E5A64;
+  --tag-required-bg: #E3F0F1;
+  --tag-optional: #4A5B66;
+  --tag-optional-bg: #ECEFF1;
+  --tag-unusual: #8F4200;
+  --tag-unusual-bg: #FFEBD5;
+
+  /* Danger */
+  --danger: #B3261E;
+  --danger-bg: #FDECEA;
+
+  /* Elevations */
+  --shadow-float: 0 1px 2px rgba(31, 45, 54, 0.18), 0 8px 24px rgba(14, 90, 100, 0.18);
+  --shadow-panel: -8px 0 32px rgba(14, 90, 100, 0.20), -1px 0 0 #CBD5DB;
+  --shadow-alert: 0 12px 32px rgba(179, 38, 30, 0.18), 0 1px 2px rgba(31, 45, 54, 0.18);
+
+  /* Radii */
+  --radius-control: 12px;
+  --radius-card: 16px;
+  --radius-panel: 20px;
+  --radius-pill: 9999px;
+
+  /* Typography */
+  --font-display: 'Baloo 2', sans-serif;
+  --font-body: 'Mukta', sans-serif;
+}

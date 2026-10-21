@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>National Scholarship Portal - Annual Income Verification</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #F0F4F8;
+      color: #1A202C;
+      margin: 0;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+      background: #FFFFFF;
+      padding: 32px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      border: 1px solid #E2E8F0;
+    }
+    .header {
+      border-bottom: 2px solid #3182CE;
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      font-size: 22px;
+      color: #2B6CB0;
+      margin: 0 0 6px 0;
+    }
+    p.subtitle {
+      font-size: 14px;
+      color: #718096;
+      margin: 0;
+    }
+    .form-group {
+      margin-bottom: 20px;
+      position: relative;
+    }
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: #2D3748;
+      margin-bottom: 6px;
+    }
+    .req { color: #E53E3E; margin-left: 2px; }
+    input[type="text"], input[type="date"], input[type="number"], select {
+      width: 100%;
+      height: 44px;
+      padding: 8px 12px;
+      font-size: 15px;
+      border: 1.5px solid #CBD5E0;
+      border-radius: 6px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus, select:focus {
+      border-color: #3182CE;
+      box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.2);
+    }
+    .help-text {
+      font-size: 12px;
+      color: #718096;
+      margin-top: 4px;
+    }
+    .btn-submit {
+      background: #2B6CB0;
+      color: white;
+      font-size: 16px;
+      font-weight: 600;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 12px;
+    }
+    .btn-submit:hover {
+      background: #2C5282;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>National Scholarship Portal</h1>
+      <p class="subtitle">Ministry of Education • Post-Matric Scholarship Scheme 2026-27</p>
+    </div>
+
+    <form id="scholarshipForm" action="/submit" method="POST">
+      <div class="form-group">
+        <label for="fullName">Candidate Full Name <span class="req">*</span></label>
+        <input type="text" id="fullName" name="fullName" placeholder="As per Class 10th Marks Sheet" required />
+        <div class="help-text">Enter your full legal name without titles like Mr./Ms.</div>
+      </div>
+
+      <div class="form-group">
+        <label for="dob">Date of Birth <span class="req">*</span></label>
+        <input type="date" id="dob" name="dob" required />
+      </div>
+
+      <div class="form-group">
+        <label for="category">Social Category <span class="req">*</span></label>
+        <select id="category" name="category" required>
+          <option value="">-- Select Category --</option>
+          <option value="GENERAL">General</option>
+          <option value="OBC">Other Backward Classes (OBC)</option>
+          <option value="SC">Scheduled Caste (SC)</option>
+          <option value="ST">Scheduled Tribe (ST)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="domicile">Domicile Certificate Number</label>
+        <input type="text" id="domicile" name="domicile" placeholder="State Revenue Certificate No." />
+        <div class="help-text">Optional for General category, mandatory for State Quota.</div>
+      </div>
+
+      <div class="form-group">
+        <label for="income">Annual Family Income (INR) <span class="req">*</span></label>
+        <input type="number" id="income" name="income" placeholder="Combined annual income in ₹" required />
+        <div class="help-text">Combined income from all sources. Official certificate must be uploaded in next step.</div>
+      </div>
+
+      <div class="form-group">
+        <label for="bankAccount">Bank Account Number <span class="req">*</span></label>
+        <input type="text" id="bankAccount" name="bankAccount" placeholder="Aadhaar-seeded personal savings account" required />
+      </div>
+
+      <div class="form-group">
+        <label for="ifsc">IFSC Code <span class="req">*</span></label>
+        <input type="text" id="ifsc" name="ifsc" placeholder="e.g. SBIN0001234" maxlength="11" required />
+        <div class="help-text">11-character code printed on cheque book or bank passbook.</div>
+      </div>
+
+      <button type="submit" class="btn-submit">Proceed to Document Upload</button>
+    </form>
+  </div>
+</body>
+</html>

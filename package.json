@@ -1,0 +1,13 @@
+{
+  "name": "formassist-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build:ext": "npm --prefix extension run build",
+    "build:functions": "npm --prefix functions run build",
+    "serve:fixtures": "node fixtures/serve.js",
+    "serve:api": "npm --prefix functions run serve:standalone",
+    "ingest": "node scripts/ingest-source-docs.js",
+    "start": "node fixtures/serve.js"
+  }
+}

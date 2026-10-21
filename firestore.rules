@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny all client access (NFR-SEC.1)
+    match /{document=**} {
+      allow read, write: false;
+    }
+
+    // Forms metadata, fields, risk flags, and source documents (read-only for clients, write restricted to Admin SDK)
+    match /forms/{formId} {
+      allow read: if true;
+      allow write: false;
+
+      match /fields/{fieldKey} {
+        allow read: if true;
+        allow write: false;
+
+        match /explanations/{language} {
+          allow read: if true;
+          allow write: false;
+        }
+      }
+
+      match /riskFlags/{flagId} {
+        allow read: if true;
+        allow write: false;
+      }
+
+      match /sourceDocuments/{docId} {
+        allow read: if true;
+        allow write: false;
+      }
+    }
+
+    // User data restricted strictly to authenticated owner (NFR-SEC.2, NFR-SEC.3)
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      match /chatSessions/{sessionId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+
+        match /messages/{messageId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+      }
+    }
+  }
+}
