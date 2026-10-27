@@ -42,7 +42,7 @@ export const en = {
     step3: 'Writing simple explanations',
     fieldsFound: '{count} fields found on this page',
     privacyNote: 'What you type stays on your computer.',
-    modeMock: 'Using local test data',
+    modeMock: '',
     modeEmulator: 'Connected to emulator',
     modeLive: 'Connected to backend',
   },
