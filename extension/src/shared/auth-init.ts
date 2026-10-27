@@ -101,44 +101,121 @@ function isBackendUnavailable(err: { code?: string; message?: string }): boolean
   );
 }
 
-function createLocalProfile(email: string): AuthStateResult {
-  const normalizedEmail = email.trim().toLowerCase();
-  return {
-    uid: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    email: normalizedEmail,
-    displayName: normalizedEmail.split('@')[0],
-    authProvider: 'local',
-  };
+interface LocalAccountRecord {
+  uid: string;
+  email: string;
+  displayName: string;
+  salt: string;
+  passwordHash: string;
+  createdAt: number;
 }
 
-async function saveLocalProfile(profile: AuthStateResult): Promise<AuthStateResult> {
-  if (typeof chrome === 'undefined' || !chrome.storage?.local) {
-    throw new Error('Local storage is not available. Please continue without an account.');
+async function computeHash(password: string, salt: string): Promise<string> {
+  const enc = new TextEncoder();
+  const data = enc.encode(`${salt}:${password}`);
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    const buf = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
   }
+  let hash = 0;
+  const str = `${salt}:${password}`;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return `h_${Math.abs(hash)}`;
+}
+
+async function getLocalAccounts(): Promise<Record<string, LocalAccountRecord>> {
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) return {};
+  const res = await chrome.storage.local.get(['local_accounts']);
+  return (res.local_accounts as Record<string, LocalAccountRecord>) || {};
+}
+
+async function saveLocalAccount(email: string, password: string): Promise<AuthStateResult> {
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) {
+    throw new Error('Local storage is not available in your browser.');
+  }
+  const accounts = await getLocalAccounts();
+  const normalized = email.trim().toLowerCase();
+  if (accounts[normalized]) {
+    throw new Error('This email address is already registered. Please sign in instead.');
+  }
+
+  const salt = Math.random().toString(36).slice(2, 10);
+  const passwordHash = await computeHash(password, salt);
+  const uid = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const displayName = normalized.split('@')[0];
+
+  accounts[normalized] = {
+    uid,
+    email: normalized,
+    displayName,
+    salt,
+    passwordHash,
+    createdAt: Date.now(),
+  };
+
+  await chrome.storage.local.set({ local_accounts: accounts });
+
+  const profile: AuthStateResult = {
+    uid,
+    email: normalized,
+    displayName,
+    authProvider: 'local',
+  };
   await chrome.storage.local.set({ user_profile: profile });
   return profile;
 }
 
-async function getLocalProfile(email: string): Promise<AuthStateResult | null> {
-  if (typeof chrome === 'undefined' || !chrome.storage?.local) return null;
-  const { user_profile: profile } = await chrome.storage.local.get('user_profile');
-  if (profile?.authProvider === 'local' && profile.email?.toLowerCase() === email.trim().toLowerCase()) {
-    return profile as AuthStateResult;
+async function verifyLocalAccount(email: string, password: string): Promise<AuthStateResult | null> {
+  const accounts = await getLocalAccounts();
+  const normalized = email.trim().toLowerCase();
+  const record = accounts[normalized];
+  if (!record) {
+    return null;
   }
-  return null;
+
+  const calculatedHash = await computeHash(password, record.salt);
+  if (calculatedHash !== record.passwordHash) {
+    throw new Error('Incorrect password. Please verify your password and try again.');
+  }
+
+  const profile: AuthStateResult = {
+    uid: record.uid,
+    email: record.email,
+    displayName: record.displayName,
+    authProvider: 'local',
+  };
+  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    await chrome.storage.local.set({ user_profile: profile });
+  }
+  return profile;
 }
 
 export async function signUpUser(email: string, password: string): Promise<AuthStateResult> {
   const trimmedEmail = email.trim();
   if (!trimmedEmail) throw new Error('Email address is required.');
-  if (!password || password.length < 6) throw new Error('Password must be at least 6 characters long.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+    throw new Error('Please enter a valid email address.');
+  }
+  if (!password || password.length < 6) {
+    throw new Error('Password must be at least 6 characters long.');
+  }
 
-  if (await getApiMode() === 'mock') {
-    return saveLocalProfile(createLocalProfile(trimmedEmail));
+  const mode = await getApiMode();
+
+  // In mock mode, register in secure local storage
+  if (mode === 'mock') {
+    return saveLocalAccount(trimmedEmail, password);
   }
 
   const auth = getFirebaseAuth();
-  if (!auth) return saveLocalProfile(createLocalProfile(trimmedEmail));
+  if (!auth) {
+    return saveLocalAccount(trimmedEmail, password);
+  }
 
   try {
     const credential = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
@@ -150,12 +227,44 @@ export async function signUpUser(email: string, password: string): Promise<AuthS
     };
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       await chrome.storage.local.set({ user_profile: result });
+      // Cache local credentials for offline fallback
+      try {
+        const accounts = await getLocalAccounts();
+        const norm = trimmedEmail.toLowerCase();
+        const salt = Math.random().toString(36).slice(2, 10);
+        accounts[norm] = {
+          uid: result.uid,
+          email: norm,
+          displayName: result.displayName || norm.split('@')[0],
+          salt,
+          passwordHash: await computeHash(password, salt),
+          createdAt: Date.now(),
+        };
+        await chrome.storage.local.set({ local_accounts: accounts });
+      } catch {
+        // non-blocking
+      }
     }
     return result;
   } catch (err: any) {
-    console.warn('Firebase signUp failed, falling back to local storage profile per user request:', err);
-    // User instruction: enable fallback to local storage if not able to connect to backend for any reason
-    return saveLocalProfile(createLocalProfile(trimmedEmail));
+    console.warn('Firebase signUp failed:', err?.code || err?.message || err);
+
+    if (err.code === 'auth/email-already-in-use') {
+      throw new Error('This email address is already registered. Please sign in instead.');
+    }
+    if (err.code === 'auth/weak-password') {
+      throw new Error('Password should be at least 6 characters.');
+    }
+    if (err.code === 'auth/invalid-email') {
+      throw new Error('Please enter a valid email address.');
+    }
+
+    if (isBackendUnavailable(err)) {
+      console.info('Backend unavailable during signUp, saving account to local storage...');
+      return saveLocalAccount(trimmedEmail, password);
+    }
+
+    throw new Error(formatAuthError(err));
   }
 }
 
@@ -164,17 +273,23 @@ export async function signInUser(email: string, password: string): Promise<AuthS
   if (!trimmedEmail) throw new Error('Email address is required.');
   if (!password) throw new Error('Password is required.');
 
-  if (await getApiMode() === 'mock') {
-    const localProfile = await getLocalProfile(trimmedEmail);
-    if (localProfile) return localProfile;
-    return saveLocalProfile(createLocalProfile(trimmedEmail));
+  const mode = await getApiMode();
+
+  if (mode === 'mock') {
+    const verified = await verifyLocalAccount(trimmedEmail, password);
+    if (!verified) {
+      throw new Error('No account found with this email. Please create an account first.');
+    }
+    return verified;
   }
 
   const auth = getFirebaseAuth();
   if (!auth) {
-    const localProfile = await getLocalProfile(trimmedEmail);
-    if (localProfile) return localProfile;
-    return saveLocalProfile(createLocalProfile(trimmedEmail));
+    const verified = await verifyLocalAccount(trimmedEmail, password);
+    if (!verified) {
+      throw new Error('No account found with this email. Please create an account first.');
+    }
+    return verified;
   }
 
   try {
@@ -187,15 +302,54 @@ export async function signInUser(email: string, password: string): Promise<AuthS
     };
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       await chrome.storage.local.set({ user_profile: result });
+      try {
+        const accounts = await getLocalAccounts();
+        const norm = trimmedEmail.toLowerCase();
+        const salt = Math.random().toString(36).slice(2, 10);
+        accounts[norm] = {
+          uid: result.uid,
+          email: norm,
+          displayName: result.displayName || norm.split('@')[0],
+          salt,
+          passwordHash: await computeHash(password, salt),
+          createdAt: Date.now(),
+        };
+        await chrome.storage.local.set({ local_accounts: accounts });
+      } catch {
+        // non-blocking
+      }
     }
     return result;
   } catch (err: any) {
-    console.warn('Firebase signIn failed, falling back to local storage profile:', err);
-    const localProfile = await getLocalProfile(trimmedEmail);
-    if (localProfile) {
-      return localProfile;
+    console.warn('Firebase signIn failed:', err?.code || err?.message || err);
+
+    if (
+      err.code === 'auth/wrong-password' ||
+      err.code === 'auth/invalid-credential' ||
+      err.code === 'auth/user-not-found'
+    ) {
+      // Check if user was registered in local storage
+      const accounts = await getLocalAccounts();
+      const norm = trimmedEmail.toLowerCase();
+      if (accounts[norm]) {
+        return (await verifyLocalAccount(trimmedEmail, password))!;
+      }
+      if (err.code === 'auth/user-not-found') {
+        throw new Error('No account found with this email. Please check your credentials or create an account.');
+      }
+      throw new Error('Incorrect email or password. Please verify your credentials and try again.');
     }
-    return saveLocalProfile(createLocalProfile(trimmedEmail));
+
+    if (isBackendUnavailable(err)) {
+      console.info('Backend unavailable during signIn, verifying credentials from local storage...');
+      const verified = await verifyLocalAccount(trimmedEmail, password);
+      if (!verified) {
+        throw new Error('No local account found with this email. Please check your credentials or create an account.');
+      }
+      return verified;
+    }
+
+    throw new Error(formatAuthError(err));
   }
 }
 

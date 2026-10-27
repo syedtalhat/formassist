@@ -12,6 +12,7 @@ build/
 firebase-debug.log*
 firestore-debug.log*
 ui-debug.log*
+firebase-config.ts
 
 # Environment files
 .env
@@ -31,3 +32,7 @@ Thumbs.db
 *.sln
 
 serviceAccountKey.json
+
+implementation_plan.md
+
+implementation_track.md

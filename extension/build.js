@@ -7,6 +7,42 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function loadEnvVariables() {
+  const envPaths = [
+    path.resolve(__dirname, '../.env'),
+    path.resolve(__dirname, '.env'),
+  ];
+  const envVars = {};
+  for (const envPath of envPaths) {
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, 'utf8');
+      for (const line of content.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx > 0) {
+          const key = trimmed.slice(0, eqIdx).trim();
+          const val = trimmed.slice(eqIdx + 1).trim();
+          envVars[key] = val;
+        }
+      }
+    }
+  }
+  return envVars;
+}
+
+const envVars = loadEnvVariables();
+const define = {
+  'process.env.NODE_ENV': JSON.stringify('production'),
+};
+for (const [key, val] of Object.entries(envVars)) {
+  define[`import.meta.env.${key}`] = JSON.stringify(val);
+  define[`process.env.${key}`] = JSON.stringify(val);
+}
+if (!define['import.meta.env.VITE_API_MODE']) {
+  define['import.meta.env.VITE_API_MODE'] = JSON.stringify('live');
+}
+
 async function runBuild() {
   console.log('🚀 Starting FormAssist Extension build...');
   const outDir = path.resolve(__dirname, 'dist');
@@ -28,6 +64,7 @@ async function runBuild() {
     resolve: {
       alias: { '@': srcDir },
     },
+    define,
     build: {
       outDir,
       emptyOutDir: false,
@@ -54,6 +91,7 @@ async function runBuild() {
     resolve: {
       alias: { '@': srcDir },
     },
+    define,
     build: {
       outDir: path.resolve(outDir, 'background'),
       emptyOutDir: false,
@@ -79,9 +117,7 @@ async function runBuild() {
     resolve: {
       alias: { '@': srcDir },
     },
-    define: {
-      'process.env.NODE_ENV': JSON.stringify('production'),
-    },
+    define,
     build: {
       outDir: path.resolve(outDir, 'content'),
       emptyOutDir: false,

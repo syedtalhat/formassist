@@ -146,33 +146,7 @@ export async function mockChatReply(
       replyText = `**Annual Family Income Guidelines:**\n\n* **Income Cap:** For most scholarship schemes (including NSP), the total family income from all combined sources must not exceed **₹2,50,000 per annum**.\n* **Calculation:** Combine the gross earnings of both parents/legal guardians for the current financial year.\n* **Supporting Document:** Submit an official Income Certificate issued by a competent revenue authority (such as a **Tahsildar** or Revenue Inspector). Salaried guardians can provide Form 16 or recent salary slips.`;
     }
   }
-  // 3. Social Category / Caste Certificate
-  else if (
-    /category|caste|quota|sc|st|obc|ews|general|jaati|reservation/i.test(query) ||
-    /category|caste/i.test(fieldKey)
-  ) {
-    if (language === 'hi') {
-      replyText = `**सामाजिक श्रेणी (Social Category) संबंधी दिशानिर्देश:**\n\n* अपने प्रमाण पत्र के अनुसार सही श्रेणी चुनें: **General, OBC, SC, ST, या EWS**।\n* यदि आप आरक्षित वर्ग या अल्पसंख्यक छात्रवृत्ति का चयन करते हैं, तो आपके पास सक्षम जिला प्राधिकारी द्वारा जारी डिजिटल जाति प्रमाण पत्र का क्रमांक (Certificate Number) होना आवश्यक है।`;
-    } else if (language === 'mr') {
-      replyText = `**सामाजिक प्रवर्ग (Social Category):**\n\n* आपल्या जात प्रमाणपत्रानुसार योग्य प्रवर्ग निवडा: **General, OBC, SC, ST, किंवा EWS**.\n* आरक्षणाचा अथवा शिष्यवृत्तीचा लाभ घेण्यासाठी सक्षम प्राधिकाऱ्याने दिलेला वैध डिजिटल जात प्रमाणपत्र क्रमांक फॉर्ममध्ये अचूक नोंदवा.`;
-    } else {
-      replyText = `**Social Category Guidelines:**\n\n* Select the category matching your official documents: **General, OBC, SC, ST, or EWS**.\n* If applying under a reserved quota or minority scheme, you must provide a digitally verifiable **Caste Certificate number** issued by the competent district authority (Sub-Divisional Officer / Tahsildar).`;
-    }
-  }
-  // 4. Bank Account / Aadhaar Seeding / DBT
-  else if (
-    /bank|account|dbt|seed|npci|passbook|khata|direct benefit/i.test(query) ||
-    /bank|account/i.test(fieldKey)
-  ) {
-    if (language === 'hi') {
-      replyText = `**बैंक खाता एवं आधार सीडिंग (Aadhaar Seeded Account):**\n\n* **व्यक्तिगत खाता:** बैंक खाता छात्र के अपने नाम पर एक सक्रिय बचत खाता (Savings Account) होना चाहिए। संयुक्त (Joint) या निष्क्रिय खाते स्वीकार्य नहीं हैं।\n* **डीबीटी एवं आधार:** छात्रवृत्ति राशि सीधे **Direct Benefit Transfer (DBT)** द्वारा भेजी जाती है, इसलिए आपका बैंक खाता बैंक शाखा में जाकर **आधार से सीड (Aadhaar Seeded / NPCI Mapped)** होना अनिवार्य है।`;
-    } else if (language === 'mr') {
-      replyText = `**बँक खाते व आधार सीडिंग:**\n\n* बँक खाते अर्जदाराच्या स्वतःच्या नावावर सक्रिय बचत खाते असणे आवश्यक आहे.\n* शिष्यवृत्ती थेट **DBT (Direct Benefit Transfer)** द्वारे जमा होते, त्यामुळे आपले खाते बँकेत जाऊन आधार क्रमांकाशी जोडलेले (**Aadhaar Seeded / NPCI Mapped**) असणे बंधनकारक आहे.`;
-    } else {
-      replyText = `**Bank Account & Aadhaar Seeding Requirements:**\n\n* **Account Holder:** The bank account must be an active individual savings account in the student's own name. Joint accounts or dormant accounts are rejected.\n* **Aadhaar Seeding (DBT):** Scholarship funds are disbursed exclusively via **Direct Benefit Transfer (DBT)**. Ensure your account is **Aadhaar-seeded** on the NPCI mapper by visiting your bank branch.`;
-    }
-  }
-  // 5. IFSC Code
+  // 3. IFSC Code (Check before category/bank to avoid 'sc' substring match)
   else if (
     /ifsc|branch code|bank code/i.test(query) ||
     /ifsc/i.test(fieldKey)
@@ -183,6 +157,32 @@ export async function mockChatReply(
       replyText = `**IFSC कोड माहिती:**\n\n* हा ११ अक्षरी कोड असतो जो आपल्या बँकेच्या पासबुकवर किंवा धनादेशावर (Cheque) छापलेला असतो (उदा. \`SBIN0001234\`).\n* पहिले ४ अक्षरे बँकेचे नाव, ५ वा आकडा नेहमी **'०' (शून्य)**, आणि शेवटचे ६ आकडे शाखेचा कोड दर्शवतात.`;
     } else {
       replyText = `**IFSC Code Details:**\n\n* The **IFSC** is an 11-character alphanumeric code printed on the front page of your bank passbook or cheque book (e.g., \`SBIN0001234\`).\n* The first 4 characters represent the bank, the 5th character is always **'0' (zero)**, and the last 6 characters identify your specific branch.`;
+    }
+  }
+  // 4. Social Category / Caste Certificate (Strict word boundaries so 'ifsc' does not match 'sc')
+  else if (
+    /\b(category|caste|quota|sc|st|obc|ews|general|jaati|reservation)\b/i.test(query) ||
+    /\b(category|caste)\b/i.test(fieldKey)
+  ) {
+    if (language === 'hi') {
+      replyText = `**सामाजिक श्रेणी (Social Category) संबंधी दिशानिर्देश:**\n\n* अपने प्रमाण पत्र के अनुसार सही श्रेणी चुनें: **General, OBC, SC, ST, या EWS**।\n* यदि आप आरक्षित वर्ग या अल्पसंख्यक छात्रवृत्ति का चयन करते हैं, तो आपके पास सक्षम जिला प्राधिकारी द्वारा जारी डिजिटल जाति प्रमाण पत्र का क्रमांक (Certificate Number) होना आवश्यक है।`;
+    } else if (language === 'mr') {
+      replyText = `**सामाजिक प्रवर्ग (Social Category):**\n\n* आपल्या जात प्रमाणपत्रानुसार योग्य प्रवर्ग निवडा: **General, OBC, SC, ST, किंवा EWS**.\n* आरक्षणाचा अथवा शिष्यवृत्तीचा लाभ घेण्यासाठी सक्षम प्राधिकाऱ्याने दिलेला वैध डिजिटल जात प्रमाणपत्र क्रमांक फॉर्ममध्ये अचूक नोंदवा.`;
+    } else {
+      replyText = `**Social Category Guidelines:**\n\n* Select the category matching your official documents: **General, OBC, SC, ST, or EWS**.\n* If applying under a reserved quota or minority scheme, you must provide a digitally verifiable **Caste Certificate number** issued by the competent district authority (Sub-Divisional Officer / Tahsildar).`;
+    }
+  }
+  // 5. Bank Account / Aadhaar Seeding / DBT
+  else if (
+    /bank|account|dbt|seed|npci|passbook|khata|direct benefit/i.test(query) ||
+    /bank|account/i.test(fieldKey)
+  ) {
+    if (language === 'hi') {
+      replyText = `**बैंक खाता एवं आधार सीडिंग (Aadhaar Seeded Account):**\n\n* **व्यक्तिगत खाता:** बैंक खाता छात्र के अपने नाम पर एक सक्रिय बचत खाता (Savings Account) होना चाहिए। संयुक्त (Joint) या निष्क्रिय खाते स्वीकार्य नहीं हैं।\n* **डीबीटी एवं आधार:** छात्रवृत्ति राशि सीधे **Direct Benefit Transfer (DBT)** द्वारा भेजी जाती है, इसलिए आपका बैंक खाता बैंक शाखा में जाकर **आधार से सीड (Aadhaar Seeded / NPCI Mapped)** होना अनिवार्य है।`;
+    } else if (language === 'mr') {
+      replyText = `**बँक खाते व आधार सीडिंग:**\n\n* बँक खाते अर्जदाराच्या स्वतःच्या नावावर सक्रिय बचत खाते असणे आवश्यक आहे.\n* शिष्यवृत्ती थेट **DBT (Direct Benefit Transfer)** द्वारे जमा होते, त्यामुळे आपले खाते बँकेत जाऊन आधार क्रमांकाशी जोडलेले (**Aadhaar Seeded / NPCI Mapped**) असणे बंधनकारक आहे.`;
+    } else {
+      replyText = `**Bank Account & Aadhaar Seeding Requirements:**\n\n* **Account Holder:** The bank account must be an active individual savings account in the student's own name. Joint accounts or dormant accounts are rejected.\n* **Aadhaar Seeding (DBT):** Scholarship funds are disbursed exclusively via **Direct Benefit Transfer (DBT)**. Ensure your account is **Aadhaar-seeded** on the NPCI mapper by visiting your bank branch.`;
     }
   }
   // 6. Date of Birth / DOB

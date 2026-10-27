@@ -132,35 +132,44 @@ Return ONLY a valid JSON object matching this schema:
   "confidence": 0.95,
   "source_excerpt": "..."
 }`;
-    try {
-        const response = await client.models.generateContent({
-            model: config_1.config.geminiModel,
-            contents: prompt,
-            config: {
-                responseMimeType: 'application/json',
-            },
-        });
-        const responseText = response.text || '';
-        const parsed = JSON.parse(responseText);
-        const sourceLabel = hasOfficialGrounding
-            ? 'official'
-            : field.helpText
-                ? 'page'
-                : 'ai';
-        return {
-            summary: parsed.summary || `${field.label}: Please fill this required information.`,
-            text: parsed.explanation || parsed.summary || 'Clear explanation unavailable.',
-            sourceLabel,
-            sourceUrl: hasOfficialGrounding ? groundingDoc?.url : undefined,
-            sourceExcerpt: parsed.source_excerpt || (hasOfficialGrounding ? groundingDoc?.title : undefined),
-            confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.85,
-        };
+    const candidateModels = [
+        config_1.config.geminiModel,
+        config_1.config.geminiFallbackModel,
+        'gemini-flash-lite-latest',
+        'gemini-3.5-flash-lite',
+        'gemini-flash-latest',
+    ].filter((m, i, arr) => Boolean(m) && arr.indexOf(m) === i);
+    for (const modelName of candidateModels) {
+        try {
+            const response = await client.models.generateContent({
+                model: modelName,
+                contents: prompt,
+                config: {
+                    responseMimeType: 'application/json',
+                },
+            });
+            const responseText = response.text || '';
+            const parsed = JSON.parse(responseText);
+            const sourceLabel = hasOfficialGrounding
+                ? 'official'
+                : field.helpText
+                    ? 'page'
+                    : 'ai';
+            return {
+                summary: parsed.summary || `${field.label}: Please fill this required information.`,
+                text: parsed.explanation || parsed.summary || 'Clear explanation unavailable.',
+                sourceLabel,
+                sourceUrl: hasOfficialGrounding ? groundingDoc?.url : undefined,
+                sourceExcerpt: parsed.source_excerpt || (hasOfficialGrounding ? groundingDoc?.title : undefined),
+                confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.85,
+            };
+        }
+        catch (err) {
+            console.warn(`Gemini explanation generation failed with model ${modelName} for ${field.label}:`, err.message);
+        }
     }
-    catch (err) {
-        console.error(`Gemini explanation generation failed for ${field.label}:`, err.message);
-        // NFR-REL.2: Gracefully degrade rather than failing the whole form
-        return buildFallbackExplanation(field, language, hasOfficialGrounding ? groundingDoc : undefined);
-    }
+    // NFR-REL.2: Gracefully degrade rather than failing the whole form
+    return buildFallbackExplanation(field, language, hasOfficialGrounding ? groundingDoc : undefined);
 }
 /**
  * Fallback explanation generator for offline/unconfigured environments or network degradation
@@ -218,6 +227,50 @@ function generateIntelligentContextualReply(params) {
     const fieldLabel = params.focusedField?.label || '';
     const fieldLabelLower = fieldLabel.toLowerCase();
     const lang = params.language;
+    // Check if this is a follow-up question (short queries like "where can i find this?", "how?", "what do i do?")
+    const isFollowUp = params.recentMessages &&
+        params.recentMessages.length >= 2 &&
+        query.split(' ').length <= 10 &&
+        /\b(this|it|that|here|where|how|what|find|get|apply|do i|can i|should i|do)\b/i.test(query);
+    // If it's a follow-up, try to base the response on the last assistant message's topic
+    if (isFollowUp && params.recentMessages && params.recentMessages.length >= 2) {
+        const lastAssistantMsg = [...params.recentMessages]
+            .reverse()
+            .find((m) => m.role === 'assistant');
+        if (lastAssistantMsg) {
+            const prevContent = lastAssistantMsg.content.toLowerCase();
+            // Detect what the previous response was about and give a contextual follow-up
+            if (/domicile|residence|tehsildar|sdm|e-district/i.test(prevContent)) {
+                if (lang === 'hi')
+                    return `**निवास प्रमाण पत्र कहाँ से मिलेगा:**\n\n* अपने **जिले के तहसीलदार या SDM कार्यालय** में जाएं।\n* **ऑनलाइन:** अपने राज्य का ई-डिस्ट्रिक्ट पोर्टल खोजें (जैसे Maharashtra: aaplesakar.maharashtra.gov.in, UP: edistrict.up.gov.in)।\n* **ऑफलाइन:** नजदीकी **Common Service Centre (CSC / जन सेवा केंद्र)** में भी आवेदन किया जा सकता है।`;
+                if (lang === 'mr')
+                    return `**अधिवास प्रमाणपत्र कुठे मिळेल:**\n\n* **तहसीलदार कार्यालय** किंवा **आपले सरकार** पोर्टल (aaplesarkar.mahaonline.gov.in) वर अर्ज करा.\n* महा-ई-सेवा केंद्रातूनही अर्ज करता येतो.`;
+                return `**Where to get a Domicile Certificate:**\n\n* Visit your **Tehsildar's office** or **Sub-Divisional Magistrate (SDM)** office in your district.\n* **Online:** Search for your state's e-District portal (e.g., Maharashtra: aaplesakar.maharashtra.gov.in, UP: edistrict.up.gov.in, Delhi: edistrict.delhigovt.nic.in).\n* **Via CSC:** You can also apply at any nearby **Common Service Centre (Jan Seva Kendra)** — they will submit the form on your behalf.`;
+            }
+            if (/ifsc|branch code/i.test(prevContent)) {
+                if (lang === 'hi')
+                    return `**IFSC Code कहाँ मिलेगा:**\n\n* अपनी **बैंक पासबुक** के पहले पृष्ठ पर देखें।\n* **चेकबुक** पर भी यह कोड छपा होता है।\n* बैंक की **आधिकारिक वेबसाइट** या RBI की IFSC खोज: https://rbi.org.in/Scripts/IFSCMICRDetails.aspx पर भी खोज सकते हैं।`;
+                if (lang === 'mr')
+                    return `**IFSC कोड कुठे मिळेल:**\n\n* तुमच्या **बँक पासबुक** च्या पहिल्या पानावर हा कोड असतो.\n* **चेकबुक** वर देखील छापलेला असतो.\n* **बँकेच्या वेबसाइटवर** किंवा RBI च्या IFSC शोध पोर्टलवर देखील शोधता येतो.`;
+                return `**Where to find your IFSC Code:**\n\n* Look on the **first page of your bank passbook**.\n* It's also printed on each leaf of your **cheque book**.\n* You can also find it on your **bank's official website** or search via RBI's IFSC finder: https://rbi.org.in/Scripts/IFSCMICRDetails.aspx`;
+            }
+            if (/income|salary|family income|certificate/i.test(prevContent) && !/caste|domicile/i.test(prevContent)) {
+                if (lang === 'hi')
+                    return `**आय प्रमाण पत्र कहाँ से मिलेगा:**\n\n* अपने **तहसीलदार या राजस्व निरीक्षक** कार्यालय से आवेदन करें।\n* **ऑनलाइन:** राज्य के ई-डिस्ट्रिक्ट पोर्टल पर।\n* **नोकरीपेशा के लिए:** नियोक्ता से Form 16 या वेतन पर्ची प्राप्त करें।`;
+                return `**Where to get an Income Certificate:**\n\n* Apply at your **Tehsildar or Revenue Inspector's office**.\n* **Online:** Through your state's e-District portal.\n* **For salaried guardians:** Obtain **Form 16** or salary slips from their employer.`;
+            }
+            if (/caste|category|obc|sc|st|ews/i.test(prevContent)) {
+                if (lang === 'hi')
+                    return `**जाति प्रमाण पत्र कहाँ से मिलेगा:**\n\n* **SDM, तहसीलदार, या जिला कल्याण अधिकारी** कार्यालय से।\n* **ऑनलाइन:** राज्य के ई-डिस्ट्रिक्ट पोर्टल पर।\n* **मुस्लिम / ईसाई / सिख जैसे धार्मिक अल्पसंख्यकों के लिए:** अगर OBC/SC/ST में नहीं आते, तो 'General/Open' श्रेणी चुनें। अल्पसंख्यक छात्रवृत्ति के लिए 'Minority' विकल्प चुनें।`;
+                return `**Where to get a Caste Certificate:**\n\n* Visit the **SDM, Tehsildar, or District Welfare Officer** office.\n* **Online:** Apply via your state's e-District portal.\n* **For Muslims, Christians, Sikhs:** If not in OBC/SC/ST lists, select **'General/Open'** category. For minority scholarship schemes, choose the **'Minority'** option if available.`;
+            }
+            if (/bank|account|aadhaar|seed|npci|dbt/i.test(prevContent)) {
+                if (lang === 'hi')
+                    return `**आधार सीडिंग के लिए:**\n\n* अपने बैंक की **किसी भी नजदीकी शाखा** में जाएं।\n* Aadhaar Card और Passbook लेकर जाएं।\n* बैंक कर्मचारी से **"Aadhaar seeding" या "NPCI mapping"** का अनुरोध करें — यह मुफ़्त है।`;
+                return `**For Aadhaar Seeding:**\n\n* Visit **any branch of your bank** with your Aadhaar Card and Passbook.\n* Request the bank staff to do **"Aadhaar seeding" or "NPCI mapping"** — it's free and usually done on the spot.`;
+            }
+        }
+    }
     // 1. Domicile / Residence Certificate
     if (/domicile|residence|resident|niwas|adhivas|state quota|who issues|issuing authority/i.test(query) ||
         /domicile|residence|resident/i.test(fieldLabelLower)) {
@@ -240,29 +293,7 @@ function generateIntelligentContextualReply(params) {
         }
         return `**Annual Family Income Guidelines:**\n\n* **Income Cap:** For most scholarship schemes (including NSP), the total family income from all combined sources must not exceed **₹2,50,000 per annum**.\n* **Calculation:** Combine the gross earnings of both parents/legal guardians for the current financial year.\n* **Supporting Document:** Submit an official Income Certificate issued by a competent revenue authority (such as a **Tahsildar** or Revenue Inspector). Salaried guardians can provide Form 16 or recent salary slips.`;
     }
-    // 3. Social Category / Caste Certificate
-    if (/category|caste|quota|sc|st|obc|ews|general|jaati|reservation/i.test(query) ||
-        /category|caste/i.test(fieldLabelLower)) {
-        if (lang === 'hi') {
-            return `**सामाजिक श्रेणी (Social Category) संबंधी दिशानिर्देश:**\n\n* अपने प्रमाण पत्र के अनुसार सही श्रेणी चुनें: **General, OBC, SC, ST, या EWS**।\n* यदि आप आरक्षित वर्ग या अल्पसंख्यक छात्रवृत्ति का चयन करते हैं, तो आपके पास सक्षम जिला प्राधिकारी द्वारा जारी डिजिटल जाति प्रमाण पत्र का क्रमांक (Certificate Number) होना आवश्यक है।`;
-        }
-        if (lang === 'mr') {
-            return `**सामाजिक प्रवर्ग (Social Category):**\n\n* आपल्या जात प्रमाणपत्रानुसार योग्य प्रवर्ग निवडा: **General, OBC, SC, ST, किंवा EWS**.\n* आरक्षणाचा अथवा शिष्यवृत्तीचा लाभ घेण्यासाठी सक्षम प्राधिकाऱ्याने दिलेला वैध डिजिटल जात प्रमाणपत्र क्रमांक फॉर्ममध्ये अचूक नोंदवा.`;
-        }
-        return `**Social Category Guidelines:**\n\n* Select the category matching your official documents: **General, OBC, SC, ST, or EWS**.\n* If applying under a reserved quota or minority scheme, you must provide a digitally verifiable **Caste Certificate number** issued by the competent district authority (Sub-Divisional Officer / Tahsildar).`;
-    }
-    // 4. Bank Account / Aadhaar Seeding / DBT
-    if (/bank|account|dbt|seed|npci|passbook|khata|direct benefit/i.test(query) ||
-        /bank|account/i.test(fieldLabelLower)) {
-        if (lang === 'hi') {
-            return `**बैंक खाता एवं आधार सीडिंग (Aadhaar Seeded Account):**\n\n* **व्यक्तिगत खाता:** बैंक खाता छात्र के अपने नाम पर एक सक्रिय बचत खाता (Savings Account) होना चाहिए। संयुक्त (Joint) या निष्क्रिय खाते स्वीकार्य नहीं हैं।\n* **डीबीटी एवं आधार:** छात्रवृत्ति राशि सीधे **Direct Benefit Transfer (DBT)** द्वारा भेजी जाती है, इसलिए आपका बैंक खाता बैंक शाखा में जाकर **आधार से सीड (Aadhaar Seeded / NPCI Mapped)** होना अनिवार्य है।`;
-        }
-        if (lang === 'mr') {
-            return `**बँक खाते व आधार सीडिंग:**\n\n* बँक खाते अर्जदाराच्या स्वतःच्या नावावर सक्रिय बचत खाते असणे आवश्यक आहे.\n* शिष्यवृत्ती थेट **DBT (Direct Benefit Transfer)** द्वारे जमा होते, त्यामुळे आपले खाते बँकेत जाऊन आधार क्रमांकाशी जोडलेले (**Aadhaar Seeded / NPCI Mapped**) असणे बंधनकारक आहे.`;
-        }
-        return `**Bank Account & Aadhaar Seeding Requirements:**\n\n* **Account Holder:** The bank account must be an active individual savings account in the student's own name. Joint accounts or dormant accounts are rejected.\n* **Aadhaar Seeding (DBT):** Scholarship funds are disbursed exclusively via **Direct Benefit Transfer (DBT)**. Ensure your account is **Aadhaar-seeded** on the NPCI mapper by visiting your bank branch.`;
-    }
-    // 5. IFSC Code
+    // 3. IFSC Code (Check before category/bank to avoid 'sc' substring match in ifsc)
     if (/ifsc|branch code|bank code/i.test(query) ||
         /ifsc/i.test(fieldLabelLower)) {
         if (lang === 'hi') {
@@ -273,7 +304,44 @@ function generateIntelligentContextualReply(params) {
         }
         return `**IFSC Code Details:**\n\n* The **IFSC** is an 11-character alphanumeric code printed on the front page of your bank passbook or cheque book (e.g., \`SBIN0001234\`).\n* The first 4 characters represent the bank, the 5th character is always **'0' (zero)**, and the last 6 characters identify your specific branch.`;
     }
-    // 6. Date of Birth / DOB
+    // 4. Social Category / Caste Certificate (Strict word boundaries so 'ifsc' does not match 'sc')
+    if (/\b(category|caste|quota|sc|st|obc|ews|general|jaati|reservation|muslim|christian|minority)\b/i.test(query) ||
+        /\b(category|caste)\b/i.test(fieldLabelLower)) {
+        // Specific: Muslim / minority category question
+        if (/muslim|christian|minority|sikh|no caste|don't belong|no category/i.test(query)) {
+            if (lang === 'hi') {
+                return `**मुस्लिम / अल्पसंख्यक श्रेणी के लिए मार्गदर्शन:**\n\n* मुस्लिम, ईसाई, सिख, बौद्ध, जैन और पारसी को भारतीय संविधान के तहत **अल्पसंख्यक (Minority)** माना जाता है।\n* यदि आप SC/ST/OBC की सूची में नहीं हैं, तो **'General'** चुनें।\n* राष्ट्रीय अल्पसंख्यक विकास एवं वित्त निगम (NMDFC) और NSP पर अल्पसंख्यक छात्रवृत्ति के लिए **'Minority'** विकल्प उपलब्ध है — वहाँ अपना धर्म (Religion) चुनें।`;
+            }
+            return `**For Muslim / Minority Category:**\n\n* Muslims, Christians, Sikhs, Buddhists, Jains, and Zoroastrians are classified as **Minorities** under the Indian Constitution.\n* If your community does not have an SC/ST/OBC classification, select **'General'** as your social category.\n* For minority-specific scholarship schemes (e.g., NSP Minority Scholarships), there is a separate **'Minority'** option — select your religion there.`;
+        }
+        if (lang === 'hi') {
+            return `**सामाजिक श्रेणी (Social Category) संबंधी दिशानिर्देश:**\n\n* अपने प्रमाण पत्र के अनुसार सही श्रेणी चुनें: **General, OBC, SC, ST, या EWS**।\n* यदि आप आरक्षित वर्ग या अल्पसंख्यक छात्रवृत्ति का चयन करते हैं, तो आपके पास सक्षम जिला प्राधिकारी द्वारा जारी डिजिटल जाति प्रमाण पत्र का क्रमांक (Certificate Number) होना आवश्यक है।`;
+        }
+        if (lang === 'mr') {
+            return `**सामाजिक प्रवर्ग (Social Category):**\n\n* आपल्या जात प्रमाणपत्रानुसार योग्य प्रवर्ग निवडा: **General, OBC, SC, ST, किंवा EWS**.\n* आरक्षणाचा अथवा शिष्यवृत्तीचा लाभ घेण्यासाठी सक्षम प्राधिकाऱ्याने दिलेला वैध डिजिटल जात प्रमाणपत्र क्रमांक फॉर्ममध्ये अचूक नोंदवा.`;
+        }
+        return `**Social Category Guidelines:**\n\n* Select the category matching your official documents: **General, OBC, SC, ST, or EWS**.\n* If applying under a reserved quota or minority scheme, you must provide a digitally verifiable **Caste Certificate number** issued by the competent district authority (Sub-Divisional Officer / Tahsildar).`;
+    }
+    // 5. Aadhaar / KYC update
+    if (/aadhaar|aadhar|aadhar number|kyc|update aadhaar|need to update/i.test(query) ||
+        /aadhaar/i.test(fieldLabelLower)) {
+        if (lang === 'hi') {
+            return `**आधार नंबर और KYC के बारे में:**\n\n* इस फ़ील्ड में आपको अपना **12 अंकों का आधार नंबर** भरना है।\n* **अपडेट की जरूरत:** अगर आपके आधार में नाम, पता या जन्म तिथि गलत है, तो https://myaadhaar.uidai.gov.in पर **ऑनलाइन** अपडेट करें, या नजदीकी **आधार सेवा केंद्र** जाएं।\n* बैंक KYC के लिए: बैंक शाखा में जाकर अपना आधार जमा करें — यह आमतौर पर 1–2 कार्यदिवस में अपडेट हो जाता है।`;
+        }
+        return `**Regarding Aadhaar / KYC:**\n\n* Enter your **12-digit Aadhaar number** as printed on your Aadhaar card.\n* **If your Aadhaar details need updating** (name, address, DOB): update online at https://myaadhaar.uidai.gov.in, or visit the nearest **Aadhaar Seva Kendra**.\n* **For Bank KYC:** Submit a copy of your Aadhaar at your bank branch. KYC updates typically reflect within 1–2 working days.`;
+    }
+    // 6. Bank Account / Aadhaar Seeding / DBT
+    if (/bank|account|dbt|seed|npci|passbook|khata|direct benefit/i.test(query) ||
+        /bank|account/i.test(fieldLabelLower)) {
+        if (lang === 'hi') {
+            return `**बैंक खाता एवं आधार सीडिंग (Aadhaar Seeded Account):**\n\n* **व्यक्तिगत खाता:** बैंक खाता छात्र के अपने नाम पर एक सक्रिय बचत खाता (Savings Account) होना चाहिए। संयुक्त (Joint) या निष्क्रिय खाते स्वीकार्य नहीं हैं।\n* **डीबीटी एवं आधार:** छात्रवृत्ति राशि सीधे **Direct Benefit Transfer (DBT)** द्वारा भेजी जाती है, इसलिए आपका बैंक खाता बैंक शाखा में जाकर **आधार से सीड (Aadhaar Seeded / NPCI Mapped)** होना अनिवार्य है।`;
+        }
+        if (lang === 'mr') {
+            return `**बँक खाते व आधार सीडिंग:**\n\n* बँक खाते अर्जदाराच्या स्वतःच्या नावावर सक्रिय बचत खाते असणे आवश्यक आहे.\n* शिष्यवृत्ती थेट **DBT (Direct Benefit Transfer)** द्वारे जमा होते, त्यामुळे आपले खाते बँकेत जाऊन आधार क्रमांकाशी जोडलेले (**Aadhaar Seeded / NPCI Mapped**) असणे बंधनकारक आहे.`;
+        }
+        return `**Bank Account & Aadhaar Seeding Requirements:**\n\n* **Account Holder:** The bank account must be an active individual savings account in the student's own name. Joint accounts or dormant accounts are rejected.\n* **Aadhaar Seeding (DBT):** Scholarship funds are disbursed exclusively via **Direct Benefit Transfer (DBT)**. Ensure your account is **Aadhaar-seeded** on the NPCI mapper by visiting your bank branch.`;
+    }
+    // 7. Date of Birth / DOB
     if (/dob|date of birth|birth|janam/i.test(query) ||
         /birth|dob/i.test(fieldLabelLower)) {
         if (lang === 'hi') {
@@ -284,7 +352,7 @@ function generateIntelligentContextualReply(params) {
         }
         return `**Date of Birth (DOB):**\n\n* Enter your Date of Birth in \`DD-MM-YYYY\` format.\n* Ensure it strictly matches your **Class 10th Marks Sheet** or official Birth Certificate to avoid document verification mismatches.`;
     }
-    // 7. Candidate Full Name
+    // 8. Candidate Full Name
     if (/candidate name|full name|first name|last name|spelling|naam/i.test(query) ||
         /candidate.*name|full.*name/i.test(fieldLabelLower)) {
         if (lang === 'hi') {
@@ -295,7 +363,7 @@ function generateIntelligentContextualReply(params) {
         }
         return `**Candidate Full Name:**\n\n* Enter your name exactly as spelled on your **Class 10th Certificate / Marks Sheet**.\n* Do not include titles or honorifics such as Mr., Ms., Shri, or Kumari.`;
     }
-    // 8. PAN / Form 60
+    // 9. PAN / Form 60
     if (/pan|pan card|form 60|tax/i.test(query) ||
         /pan/i.test(fieldLabelLower)) {
         if (lang === 'hi') {
@@ -306,7 +374,7 @@ function generateIntelligentContextualReply(params) {
         }
         return `**PAN (Permanent Account Number) Guidelines:**\n\n* PAN is a 10-character alphanumeric identity issued by the Income Tax Department (e.g., \`ABCDE1234F\`).\n* It is mandatory for financial and banking transactions. Individuals without a PAN may declare exempt income using Form 60.`;
     }
-    // 9. Generic / Focused Field Contextual Answer
+    // 10. Generic / Focused Field Contextual Answer
     if (fieldLabel) {
         if (lang === 'hi') {
             return `**"${fieldLabel}" के संबंध में:**\n\n* कृपया इस फ़ील्ड में जानकारी अपने संबंधित आधिकारिक सरकारी या शैक्षिक दस्तावेजों के अनुसार भरें।\n${params.focusedField?.explanation ? `* **विवरण:** ${params.focusedField.explanation}\n` : ''}* यदि आपको किसी प्रमाण पत्र या प्रारूप से संबंधित कोई विशिष्ट सहायता चाहिए, तो कृपया पूछें!`;
@@ -316,7 +384,7 @@ function generateIntelligentContextualReply(params) {
         }
         return `**Regarding "${fieldLabel}":**\n\n* Please enter the details exactly as verified on your supporting institutional or government documents.\n${params.focusedField?.explanation ? `* **Guidance:** ${params.focusedField.explanation}\n` : ''}* Feel free to ask if you need details on specific document formats or issuing authorities!`;
     }
-    // 10. General Help
+    // 11. General Help
     if (lang === 'hi') {
         return `मैं फॉर्म भरने में आपकी सहायता के लिए उपस्थित हूँ। आप फ़ील्ड पर क्लिक करके उसका विवरण देख सकते हैं, या मुझसे किसी भी दस्तावेज़, आय सीमा, या प्रमाण पत्र के बारे में पूछ सकते हैं!`;
     }
@@ -342,52 +410,48 @@ async function generateChatReplyWithGemini(params) {
             focusedField: params.focusedField,
             language: params.language,
             formTitle: params.formTitle,
+            recentMessages: params.recentMessages,
         });
     }
-    const sysPrompt = `You are FormAssist, an empathetic, helpful assistant guiding a user who is filling out an online form.
-Language: Answer strictly in ${langNames[params.language]}.
-Rules:
-1. Explain what documents they might need, how to format their answer, or what terms mean.
-2. Be brief, warm, practical, and clear. Avoid bureaucratic jargon.
-3. PRIVACY: You do NOT have access to what they typed into fields (zero-knowledge policy), only whether fields are completed or blank. Never pretend you can see their private numbers.
-${params.formTitle ? `Form: "${params.formTitle}"` : ''}
-${params.focusedField ? `The user is currently focused on field: "${params.focusedField.label}".` : 'No specific field is currently selected.'}
-${params.focusedField?.explanation ? `Context for this field: ${params.focusedField.explanation}` : ''}
-${params.completedFieldKeys && params.completedFieldKeys.length > 0 ? `Completed fields on page: ${params.completedFieldKeys.length} fields filled.` : ''}
-`;
-    // Construct conversation contents for Gemini
+    const sysPrompt = `You are FormAssist, a warm, helpful assistant guiding a user filling out an online government or banking form in India.
+Language: Respond ONLY in ${langNames[params.language]}.
+
+Core rules:
+1. Answer the user's SPECIFIC question directly — do NOT give generic form-filling advice unless asked.
+2. Read the conversation history carefully. If the user asks a follow-up like "where can I find this?", "how do I get it?", or "what should I select?", answer IN CONTEXT of the previous messages — do not restart with a templated overview.
+3. Be concise, warm, and practical. Use bullet points and bold for key terms. Avoid bureaucratic jargon.
+4. PRIVACY: You do NOT have access to what they typed into fields (zero-knowledge). Never pretend you can see their values.
+5. If the user's question involves a specific scenario (e.g., "I am Muslim, what category?"), give a specific, direct answer — not a generic category overview.
+${params.formTitle ? `\nForm being filled: "${params.formTitle}"` : ''}
+${params.focusedField ? `Currently focused field: "${params.focusedField.label}"${params.focusedField.explanation ? `\nField description: ${params.focusedField.explanation}` : ''}` : ''}
+${params.completedFieldKeys && params.completedFieldKeys.length > 0 ? `Fields already completed: ${params.completedFieldKeys.length}` : ''}`;
+    // Build proper multi-turn chat contents for Gemini
+    const conversationParts = params.recentMessages.slice(-6).map((m) => `${m.role === 'user' ? 'User' : 'FormAssist'}: ${m.content}`);
     const promptContents = [
         sysPrompt,
-        ...params.recentMessages.slice(-6).map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`),
+        ...conversationParts,
         `User: ${params.userMessage}`,
-        'Assistant:',
+        'FormAssist:',
     ].join('\n\n');
-    // Try primary model (gemini-3.8-flash)
-    try {
-        const response = await client.models.generateContent({
-            model: config_1.config.geminiModel,
-            contents: promptContents,
-        });
-        if (response.text && response.text.trim()) {
-            return response.text.trim();
+    const candidateModels = [
+        config_1.config.geminiModel,
+        config_1.config.geminiFallbackModel,
+        'gemini-2.0-flash-lite',
+        'gemini-1.5-flash',
+        'gemini-2.5-flash',
+    ].filter((m, i, arr) => Boolean(m) && arr.indexOf(m) === i);
+    for (const modelName of candidateModels) {
+        try {
+            const response = await client.models.generateContent({
+                model: modelName,
+                contents: promptContents,
+            });
+            if (response.text && response.text.trim()) {
+                return response.text.trim();
+            }
         }
-    }
-    catch (err) {
-        console.warn(`Primary Gemini model (${config_1.config.geminiModel}) failed:`, err?.message || err);
-        // Try fallback model if configured and different
-        if (config_1.config.geminiFallbackModel && config_1.config.geminiFallbackModel !== config_1.config.geminiModel) {
-            try {
-                const fallbackRes = await client.models.generateContent({
-                    model: config_1.config.geminiFallbackModel,
-                    contents: promptContents,
-                });
-                if (fallbackRes.text && fallbackRes.text.trim()) {
-                    return fallbackRes.text.trim();
-                }
-            }
-            catch (fbErr) {
-                console.warn(`Fallback Gemini model (${config_1.config.geminiFallbackModel}) failed:`, fbErr?.message || fbErr);
-            }
+        catch (err) {
+            console.warn(`Gemini chat model (${modelName}) failed:`, err?.message || err);
         }
     }
     // Graceful intelligent contextual fallback when Gemini API is busy/503/offline
@@ -396,6 +460,7 @@ ${params.completedFieldKeys && params.completedFieldKeys.length > 0 ? `Completed
         focusedField: params.focusedField,
         language: params.language,
         formTitle: params.formTitle,
+        recentMessages: params.recentMessages,
     });
 }
 //# sourceMappingURL=gemini.js.map

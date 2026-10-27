@@ -11,7 +11,7 @@ import {
   ChatMessage,
   UserPreferences,
 } from '../shared/types';
-import { isMockMode, apiBaseUrl, getApiMode } from '../shared/firebase-config';
+import { isMockMode, apiBaseUrl, getApiMode, geminiApiKey } from '../shared/firebase-config';
 import { getUserIdToken } from '../shared/auth-init';
 import { mockAnalyzeForm, mockChatReply } from '../shared/mock/mock-api';
 
@@ -136,6 +136,71 @@ export async function apiAnalyzeForm(
   }
 }
 
+async function callDirectGeminiLLM(
+  text: string,
+  fieldId: string | undefined,
+  language: Language
+): Promise<string> {
+  if (!geminiApiKey) {
+    throw new Error('No Gemini API key available.');
+  }
+
+  const langNames: Record<Language, string> = {
+    en: 'English',
+    hi: 'Hindi (हिंदी)',
+    mr: 'Marathi (मराठी)',
+  };
+
+  const sysPrompt = `You are FormAssist, an empathetic, helpful assistant guiding a user who is filling out an online form.
+Language requirement: Answer strictly in ${langNames[language] || 'English'}.
+Rules:
+1. Explain what documents they might need, how to format their answer, or what terms mean (such as IFSC code, caste certificate, domicile, income limit).
+2. Be brief, warm, practical, and clear. Avoid unnecessary bureaucracy.
+3. The user is asking about form field "${fieldId || 'the current form'}".
+Respond to the user's inquiry clearly using Markdown.`;
+
+  const modelsToTry = [
+    'gemini-flash-lite-latest',
+    'gemini-3.5-flash-lite',
+    'gemini-flash-latest',
+  ];
+
+  for (const model of modelsToTry) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `${sysPrompt}\n\nUser: ${text}\n\nAssistant:`,
+                },
+              ],
+            },
+          ],
+        }),
+      });
+
+      if (!res.ok) {
+        continue;
+      }
+
+      const json = await res.json();
+      const content = json.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (content && content.trim()) {
+        return content.trim();
+      }
+    } catch {
+      // try next model candidate
+    }
+  }
+
+  throw new Error('All direct Gemini models failed or timed out.');
+}
+
 export async function apiSendChat(
   text: string,
   fieldId: string | undefined,
@@ -143,51 +208,73 @@ export async function apiSendChat(
   formStructure?: ExtractedField[]
 ): Promise<ChatMessage> {
   const mode = await getApiMode();
-  if (mode === 'mock') {
-    return mockChatReply(text, fieldId, language);
+
+  // 1. If in live/emulator mode, try backend /chat first
+  if (mode !== 'mock') {
+    try {
+      const token = await getUserIdToken();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetchWithRetry(
+        `${apiBaseUrl}/chat`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            message: text,
+            focused_field_key: fieldId,
+            form_id: 'form_active',
+            language,
+          }),
+        },
+        1,
+        500
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const replyContent =
+          data.reply || data.message?.content || data.message;
+        if (replyContent) {
+          return {
+            id: `msg_${Date.now()}`,
+            sender: 'assistant',
+            content: replyContent,
+            timestamp: Date.now(),
+            focusedFieldId: fieldId,
+          };
+        }
+      }
+    } catch (err: any) {
+      console.warn(
+        `[API Client] Live backend chat failed (${err?.message || err}). Trying direct Gemini LLM...`
+      );
+    }
   }
 
+  // 2. Direct Gemini LLM fallback (generates real AI responses directly from browser)
   try {
-    const token = await getUserIdToken();
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const response = await fetchWithRetry(`${apiBaseUrl}/chat`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        message: text,
-        focused_field_key: fieldId,
-        form_id: 'form_active',
-        language,
-      }),
-    });
-
-    if (!response.ok) {
-      const errBody = await response.json().catch(() => ({}));
-      throw new Error(errBody.error || `Chat error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const replyContent = data.reply || data.message?.content || data.message || 'I am here to assist with this form.';
-
-    const chatMessage: ChatMessage = {
+    const directReply = await callDirectGeminiLLM(text, fieldId, language);
+    return {
       id: `msg_${Date.now()}`,
       sender: 'assistant',
-      content: replyContent,
+      content: directReply,
       timestamp: Date.now(),
       focusedFieldId: fieldId,
     };
-
-    return chatMessage;
-  } catch (err: any) {
-    console.warn(`[API Client] Live chat failed (${err?.message || err}). Falling back to local mock reply.`);
-    return mockChatReply(text, fieldId, language);
+  } catch (directErr: any) {
+    console.warn(
+      `[API Client] Direct Gemini LLM failed (${directErr?.message || directErr}). Using offline knowledge engine.`
+    );
   }
+
+  // 3. Deterministic offline knowledge fallback with verified regex
+  return mockChatReply(text, fieldId, language);
 }
 
 export async function apiGetPreferences(): Promise<UserPreferences | null> {

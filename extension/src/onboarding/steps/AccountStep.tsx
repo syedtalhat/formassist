@@ -41,24 +41,7 @@ export const AccountStep: React.FC<AccountStepProps> = ({
       }
       onFinish(email.trim());
     } catch (err: any) {
-      if (err.message && (err.message.includes('Password must') || err.message.includes('Email address is required'))) {
-        setAuthError(err.message);
-      } else {
-        // Fallback: save to local storage and proceed without blocking the user
-        const localUser = {
-          uid: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          email: email.trim().toLowerCase(),
-          displayName: email.trim().split('@')[0],
-          authProvider: 'local',
-        };
-        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-          await chrome.storage.local.set({
-            user_profile: localUser,
-            default_language: selectedLanguage,
-          });
-        }
-        onFinish(email.trim());
-      }
+      setAuthError(err?.message || 'Authentication failed. Please check your details.');
     } finally {
       setLoading(false);
     }
